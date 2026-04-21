@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="株スクリーナー">
+<title>株スクリーナー Pro</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#0a0e1a;color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;overflow-x:hidden}
+input{-webkit-appearance:none;border-radius:8px}
+canvas{display:block}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef}=React;
+const C={bg:"#0a0e1a",surface:"#111827",surface2:"#1a2235",border:"#1e2d45",accent:"#3b82f6",green:"#10b981",red:"#ef4444",yellow:"#f59e0b",text:"#f1f5f9",text2:"#94a3b8",text3:"#475569"};
+const mc={g:C.green,w:C.yellow,r:C.red};
+
+const STOCKS=[
+{code:"149A",market:"グロース",name:"シンカ",price:1842,chg:3.2,score:9,
+metrics:{equity:72.4,opMargin:18.3,growth:34,per:24.1,pbr:0.87,roe:22.1},
+conds:["自己資本✓","増収増益✓","営業CF+✓","MA線上✓","ストック型✓"],fails:["PBR1倍↑✗"],
+chart:[1200,1280,1350,1290,1420,1480,1390,1520,1610,1580,1680,1750,1800,1842],up:true,
+sector:"SaaS・ストック型",owner:true,foreign:24.3,years:3},
+{code:"7354",market:"スタンダード",name:"デジタルHD",price:3210,chg:1.8,score:8,
+metrics:{equity:68.1,opMargin:14.7,growth:21,per:12.4,pbr:0.72,roe:17.3},
+conds:["自己資本✓","増収増益✓","PBR割れ✓","MA線上✓"],fails:["上場5年内✗"],
+chart:[2800,2900,2750,2850,3000,3100,3050,3150,3200,3180,3220,3210],up:true,
+sector:"DX・ITサービス",owner:true,foreign:18.2,years:7},
+{code:"5023",market:"グロース",name:"テックアルファ",price:892,chg:-0.9,score:6,
+metrics:{equity:55.3,opMargin:9.8,growth:28,per:18.2,pbr:1.3,roe:11.2},
+conds:["自己資本✓","増収増益✓","上場3年✓"],fails:["利益率10%✗","MA線下✗"],
+chart:[1000,980,920,950,900,880,860,910,870,890,895,892],up:false,
+sector:"AI・クラウド",owner:false,foreign:12.1,years:3},
+{code:"9876",market:"プライム",name:"グリーンベータ",price:5430,chg:4.1,score:8,
+metrics:{equity:81.2,opMargin:22.5,growth:19,per:14.8,pbr:0.91,roe:19.8},
+conds:["自己資本✓","増収増益✓","営業CF+✓","PBR割れ✓","MA線上✓","ROE15%↑✓"],fails:[],
+chart:[4200,4350,4500,4400,4600,4800,4750,4900,5100,5200,5350,5430],up:true,
+sector:"環境・エネルギー",owner:true,foreign:31.5,years:12},
+{code:"3827",market:"グロース",name:"モバイルファクトリー",price:1245,chg:2.3,score:7,
+metrics:{equity:61.0,opMargin:12.4,growth:18,per:16.5,pbr:0.95,roe:15.8},
+conds:["自己資本✓","増収増益✓","営業CF+✓","MA線上✓"],fails:["外国人20%✗"],
+chart:[980,1020,1060,1010,1080,1120,1090,1150,1200,1180,1230,1245],up:true,
+sector:"モバイル・ゲーム",owner:true,foreign:14.2,years:8},
+];
+
+const FILTERS=["自己資本50%↑","営業CF黒字","増収増益","利益率10%↑","MA線上","PBR1倍割れ","上場5年内","ROE15%↑","出来高急増"];
+const TABS=["すべて","グロース🚀","バリュー💎","モメンタム⚡","IPO新着"];
+const WATCH0=[{code:"149A",name:"シンカ",price:1842,chg:3.2,alert:1900},{code:"9876",name:"グリーンベータ",price:5430,chg:4.1,alert:5500}];
+const PORT0=[{code:"149A",name:"シンカ",qty:100,avg:1600,price:1842},{code:"7354",name:"デジタルHD",qty:50,avg:3000,price:3210}];
+const ALERT0=[{id:1,code:"149A",name:"シンカ",type:"価格上昇",target:"¥1,900",status:"待機中",color:C.green},{id:2,code:"9876",name:"グリーンベータ",type:"MAクロス",target:"25日MA超え",status:"発動！",color:C.yellow},{id:3,code:"5023",name:"テックアルファ",type:"出来高急増",target:"平均2倍以上",status:"待機中",color:C.accent}];
+
+function Chart({data,color}){
+  const ref=useRef(null);
+  useEffect(()=>{
+    const el=ref.current;if(!el)return;
+    const w=el.offsetWidth||300,h=44;
+    el.width=w*2;el.height=h*2;
+    const ctx=el.getContext("2d");ctx.scale(2,2);
+    const mn=Math.min(...data),mx=Math.max(...data),rng=mx-mn||1;
+    const g=ctx.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,color+"55");g.addColorStop(1,color+"08");
+    ctx.beginPath();
+    data.forEach((v,i)=>{const x=i/(data.length-1)*w,y=h-(v-mn)/rng*(h-10)-5;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+    ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();ctx.fillStyle=g;ctx.fill();
+    ctx.beginPath();
+    data.forEach((v,i)=>{const x=i/(data.length-1)*w,y=h-(v-mn)/rng*(h-10)-5;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+    ctx.strokeStyle=color;ctx.lineWidth=2;ctx.lineJoin="round";ctx.stroke();
+  },[data,color]);
+  return <canvas ref={ref} style={{width:"100%",height:"44px"}}/>;
+}
+
+function Screener(){
+  const [tab,setTab]=useState(0);
+  const [filters,setFilters]=useState(FILTERS.map((_,i)=>i<5));
+  const [modal,setModal]=useState(null);
+  const [rs,setRs]=useState(0);
+  function run(){setRs(1);setTimeout(()=>{setRs(2);setTimeout(()=>setRs(0),2500);},1600);}
+  const list=STOCKS.filter(s=>{
+    if(tab===1)return s.market==="グロース";
+    if(tab===2)return s.metrics.pbr<1;
+    if(tab===3)return s.chg>2;
+    if(tab===4)return s.years<=3;
+    return true;
+  }).sort((a,b)=>b.score-a.score);
+  return(<div>
+    <div style={{background:"linear-gradient(135deg,#0f172a,#1e1b4b)",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"8px"}}>
+        {[["3,924","対象",C.accent],["47","通過",C.green],["12","高評価",C.yellow],["+2.3%","TOPIX",C.red]].map(([v,l,c])=>(
+          <div key={l} style={{background:"rgba(255,255,255,0.05)",borderRadius:"10px",padding:"8px",textAlign:"center"}}>
+            <div style={{fontSize:"16px",fontWeight:800,color:c}}>{v}</div>
+            <div style={{fontSize:"10px",color:C.text2,marginTop:"2px"}}>{l}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+    <div style={{display:"flex",gap:"6px",padding:"10px 16px",overflowX:"auto",scrollbarWidth:"none"}}>
+      {TABS.map((t,i)=>(
+        <div key={t} onClick={()=>setTab(i)} style={{flexShrink:0,padding:"5px 12px",borderRadius:"20px",fontSize:"12px",fontWeight:500,border:`1px solid ${i===tab?C.accent:C.border}`,background:i===tab?C.accent:C.surface,color:i===tab?"white":C.text2,cursor:"pointer"}}>{t}</div>
+      ))}
+    </div>
+    <div style={{padding:"10px 16px",background:C.surface,borderBottom:`1px solid ${C.border}`}}>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:"11px",color:C.text2,marginBottom:"8px"}}>
+        <span>🎯 必須条件</span>
+        <span onClick={()=>setFilters(FILTERS.map(()=>true))} style={{color:C.accent,cursor:"pointer"}}>全ON</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"5px"}}>
+        {FILTERS.map((f,i)=>(
+          <div key={f} onClick={()=>setFilters(fl=>fl.map((v,j)=>j===i?!v:v))}
+            style={{display:"flex",alignItems:"center",gap:"4px",background:filters[i]?"rgba(59,130,246,0.15)":C.surface2,border:`1px solid ${filters[i]?"rgba(59,130,246,0.5)":C.border}`,borderRadius:"7px",padding:"5px 7px",fontSize:"10px",color:filters[i]?C.text:C.text2,cursor:"pointer",userSelect:"none"}}>
+            <div style={{width:"6px",height:"6px",borderRadius:"50%",background:filters[i]?C.accent:C.text3,flexShrink:0}}/>{f}
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:"8px",marginTop:"10px"}}>
+        <button onClick={run} style={{flex:1,padding:"10px",borderRadius:"10px",border:"none",fontSize:"13px",fontWeight:600,cursor:"pointer",background:C.accent,color:"white"}}>
+          {rs===1?"⏳ 取得中...":rs===2?"✅ "+list.length+"銘柄ヒット！":"🔍 スクリーニング実行"}
+        </button>
+        <button onClick={()=>setFilters(FILTERS.map((_,i)=>i<5))} style={{flex:"0 0 72px",padding:"10px",borderRadius:"10px",border:`1px solid ${C.border}`,fontSize:"12px",fontWeight:600,cursor:"pointer",background:C.surface2,color:C.text2}}>↺ リセット</button>
+      </div>
+    </div>
+    <div style={{padding:"8px 16px",display:"flex",justifyContent:"space-between"}}>
+      <div style={{fontSize:"12px",color:C.text2}}>該当 <b style={{color:C.text}}>{list.length}</b> 銘柄</div>
+      <div style={{fontSize:"11px",color:C.accent}}>スコア順 ▾</div>
+    </div>
+    <div style={{padding:"0 16px 120px",display:"flex",flexDirection:"column",gap:"10px"}}>
+      {list.map(s=>(
+        <div key={s.code} onClick={()=>setModal(s)} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:"14px",padding:"14px",cursor:"pointer",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",left:0,top:0,bottom:0,width:"3px",background:s.score>=8?C.green:C.yellow,borderRadius:"3px 0 0 3px"}}/>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"10px"}}>
+            <div>
+              <div style={{fontSize:"11px",color:C.text2}}>{s.code} <span style={{fontSize:"10px",padding:"2px 6px",borderRadius:"4px",background:"rgba(99,102,241,0.2)",color:"#a5b4fc",marginLeft:"4px"}}>{s.market}</span></div>
+              <div style={{fontSize:"15px",fontWeight:700}}>{s.name}</div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",background:s.score>=8?"rgba(16,185,129,0.1)":"rgba(245,158,11,0.1)",border:`1px solid ${s.score>=8?"rgba(16,185,129,0.3)":"rgba(245,158,11,0.3)"}`,borderRadius:"10px",padding:"5px 10px",minWidth:"50px"}}>
+              <div style={{fontSize:"20px",fontWeight:800,color:s.score>=8?C.green:C.yellow,lineHeight:1}}>{s.score}</div>
+              <div style={{fontSize:"9px",color:C.text2}}>/ 10点</div>
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"baseline",gap:"8px",marginBottom:"10px"}}>
+            <div style={{fontSize:"22px",fontWeight:700}}>¥{s.price.toLocaleString()}</div>
+            <div style={{fontSize:"13px",fontWeight:600,color:s.chg>=0?C.green:C.red}}>{s.chg>=0?"▲":"▼"} {Math.abs(s.chg)}%</div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"5px",marginBottom:"10px"}}>
+            {[["自己資本",s.metrics.equity+"%",s.metrics.equity>=70?"g":s.metrics.equity>=50?"w":"r"],
+              ["営業利益率",s.metrics.opMargin+"%",s.metrics.opMargin>=15?"g":s.metrics.opMargin>=10?"w":"r"],
+              ["売上成長","+"+s.metrics.growth+"%","g"],
+              ["PER",s.metrics.per+"倍",s.metrics.per<=15?"g":s.metrics.per<=20?"w":"r"],
+              ["PBR",s.metrics.pbr+"倍",s.metrics.pbr<1?"g":"w"],
+              ["ROE",s.metrics.roe+"%",s.metrics.roe>=15?"g":"w"]].map(([l,v,c])=>(
+              <div key={l} style={{background:C.surface2,borderRadius:"7px",padding:"6px 8px"}}>
+                <div style={{fontSize:"10px",color:C.text2,marginBottom:"2px"}}>{l}</div>
+                <div style={{fontSize:"12px",fontWeight:600,color:mc[c]||C.text}}>{v}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:"4px",marginBottom:"10px"}}>
+            {s.conds.map(c=><span key={c} style={{fontSize:"10px",padding:"2px 6px",borderRadius:"4px",background:"rgba(16,185,129,0.15)",color:"#6ee7b7"}}>{c}</span>)}
+            {s.fails.map(c=><span key={c} style={{fontSize:"10px",padding:"2px 6px",borderRadius:"4px",background:"rgba(239,68,68,0.1)",color:"#fca5a5"}}>{c}</span>)}
+          </div>
+          <div style={{borderRadius:"6px",background:C.surface2,overflow:"hidden"}}><Chart data={s.chart} color={s.up?C.green:C.red}/></div>
+        </div>
+      ))}
+    </div>
+    {modal&&(
+      <div onClick={()=>setModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:300,backdropFilter:"blur(6px)",display:"flex",alignItems:"flex-end"}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:C.surface,borderRadius:"24px 24px 0 0",width:"100%",maxHeight:"88vh",overflowY:"auto",padding:"20px 20px 48px",border:`1px solid ${C.border}`}}>
+          <div style={{width:"36px",height:"4px",background:C.border,borderRadius:"2px",margin:"0 auto 16px"}}/>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:"4px"}}>
+            <h2 style={{fontSize:"20px",fontWeight:700}}>{modal.name}</h2>
+            <div style={{fontSize:"10px",padding:"3px 8px",borderRadius:"6px",background:"rgba(99,102,241,0.2)",color:"#a5b4fc"}}>{modal.market}</div>
+          </div>
+          <div style={{fontSize:"13px",color:C.text2,marginBottom:"16px"}}>{modal.code}｜{modal.sector}</div>
+          <div style={{display:"flex",alignItems:"baseline",gap:"10px",marginBottom:"16px",padding:"12px",background:C.surface2,borderRadius:"12px"}}>
+            <div style={{fontSize:"28px",fontWeight:800}}>¥{modal.price.toLocaleString()}</div>
+            <div style={{fontSize:"15px",fontWeight:600,color:modal.chg>=0?C.green:C.red}}>{modal.chg>=0?"▲":"▼"} {Math.abs(modal.chg)}%</div>
+          </div>
+          {[["📊 財務指標",[["自己資本比率",modal.metrics.equity+"%","g"],["営業利益率",modal.metrics.opMargin+"%","g"],["有利子負債","ほぼ0","g"],["営業CF","黒字✓","g"],["売上成長","+"+modal.metrics.growth+"%","g"],["ROE",modal.metrics.roe+"%","g"]]],
+            ["💰 バリュエーション",[["PER",modal.metrics.per+"倍",modal.metrics.per<=15?"g":"w"],["PBR",modal.metrics.pbr+"倍",modal.metrics.pbr<1?"g":"w"],["PSR","0.94倍","g"],["配当利回り","−",""]]],
+            ["⚡ モメンタム",[["52週高値比","92%","g"],["出来高比率","2.1​​​​​​​​​​​​​​​​
